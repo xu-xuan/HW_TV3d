@@ -17,7 +17,6 @@ def worker(In, J, dt, lam):
   DfJz=J[:,:,list(range(1,l))+[l-1]]-J
 
   TempDJ=(ep+DfJx*DfJx+DfJy*DfJy+DfJz*DfJz)**(1/2)
- 
   DivJx=DfJx/TempDJ;
   DivJy=DfJy/TempDJ;
   DivJz=DfJz/TempDJ;
@@ -55,9 +54,26 @@ def irecv4coord(sourcecoord, tag, ncoord):
   else:
     sourcerank = coord2rank(sourcecoord,ncoord)
     req = comm.irecv(source=sourcerank, tag=tag)
-    data = req.wait()
-    return data
+    return req
 
+def Send4coord(data, destcoord, tag, ncoord):
+  if destcoord is None:
+    return None
+  else:
+    sendbuf = data.copy()
+    destrank = coord2rank(destcoord,ncoord)
+    comm.Send(sendbuf, dest=destrank, tag=tag)
+    return 1
+  
+def Recv4coord(data, sourcecoord, tag, ncoord):
+  if sourcecoord is None:
+    return None
+  else:
+    recbuf = np.empty(data.shape, dtype=data.dtype)
+    sourcerank = coord2rank(sourcecoord,ncoord)
+    comm.Recv(recbuf, source=sourcerank, tag=tag)
+    data = recbuf
+    return 1
 	
 if __name__ == '__main__':
   from mpi4py import MPI
@@ -78,6 +94,7 @@ if __name__ == '__main__':
 	# Adding Gaussian noise
     nmean, nsigma = 0.0, 12.0
     nimg = np.random.normal(nmean,nsigma,(nx,ny,nz)) + img
+    del img
     nimgsile = nimg[0:101,0:101,0:101]
     for i in range(1,size):
       icoord = rank2coord(i,ncoord)
@@ -90,10 +107,12 @@ if __name__ == '__main__':
         else:
           start[j] = 99
           end[j] = 200
-      sendbuf = nimg[start[0]:end[0], start[1]:end[1], start[2]:end[2]]
-      comm.send(sendbuf, dest=i, tag=11)
+      sendbuf = nimg[start[0]:end[0], start[1]:end[1], start[2]:end[2]].copy()
+      comm.Send(sendbuf, dest=i, tag=11)
+    del nimg, sendbuf
   else: 
-    nimgsile = comm.recv(source=0, tag=11)
+    nimgsile = np.empty([101,101,101],dtype=np.float64) 
+    comm.Recv(nimgsile, source=0, tag=11)
 	  
 
   # Compute the rank for up, down, left, right,  front, behind
@@ -133,52 +152,72 @@ if __name__ == '__main__':
   else:
     backcoord = None  
 	
-  print(upcoord,downcoord,leftcoord,rightcoord,frontcoord,backcoord, 'of', coord)
+ # print(upcoord,downcoord,leftcoord,rightcoord,frontcoord,backcoord, 'of', coord)
   
   # Iterative
   J = nimgsile.copy()
   n0,n1,n2 = J.shape  
   for t in range(T):
+    if rank ==0 and not t%5:
+      print(t, 'of ', T)
     J = worker(nimgsile, J, dt, lam)
 	# Send
-    req_send = isend4coord(J[1,:,:], upcoord, 1, ncoord) 
-    req_send = isend4coord(J[n0-2,:,:], downcoord, 1, ncoord)
-    req_send = isend4coord(J[:,1,:], leftcoord, 1, ncoord)
-    req_send = isend4coord(J[:,n1-2,:], rightcoord, 1, ncoord)
-    req_send = isend4coord(J[:,:,1], frontcoord, 1, ncoord)
-    req_send = isend4coord(J[:,:,n2-2], backcoord, 1, ncoord)
-	# Rev
-    data = irecv4coord(upcoord,1, ncoord)
-    #print('goodmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm')
-    if not data is None:
-       print('mmmmmmmm:',J[0,:,:].shape)
-       #data = req_up.wait()
-       print('mmmmmmmm:',data.shape,J[0,:,:].shape)
-	   
-    req_down = irecv4coord(downcoord,1, ncoord)
-    req_left = irecv4coord(leftcoord,1, ncoord)
-    req_right = irecv4coord(rightcoord,1, ncoord)
-    req_front = irecv4coord(frontcoord,1, ncoord)
-    req_back = irecv4coord(backcoord,1, ncoord)
+    req_send = Send4coord(J[1,:,:], upcoord, 1, ncoord) 
+    req_down = Recv4coord(J[n0-1,:,:],downcoord,1, ncoord)	
+	
+    req_send = Send4coord(J[n0-2,:,:], downcoord, 1, ncoord)
+    req_up = Recv4coord(J[0,:,:],upcoord,1, ncoord) 	
+	
+    req_send = Send4coord(J[:,1,:], leftcoord, 1, ncoord)
+    req_right = Recv4coord(J[:,n1-1,:],rightcoord,1, ncoord)	
 
-    if not req_down is None:
-      J[n0-1,:,:] = req_down.wait()
-    if not req_left is None:
-      J[:,0,:] = req_left.wait()
-    if not req_right is None:
-      J[:,n1-1,:] = req_right.wait()
-    if not req_front is None:
-      J[:,:,0] = req_front.wait()
-    if not req_back is None:
-      J[:,:,n2-1] = req_back.wait()
-  
+	
+    req_send = Send4coord(J[:,n1-2,:], rightcoord, 1, ncoord)
+    req_left = Recv4coord(J[:,0,:],leftcoord,1, ncoord)	
+	
+    req_send = Send4coord(J[:,:,1], frontcoord, 1, ncoord)
+    req_back = Recv4coord(J[:,:,n2-1],backcoord,1, ncoord)
+
+    req_send = Send4coord(J[:,:,n2-2], backcoord, 1, ncoord)
+    req_front = Recv4coord(J[:,:,0], frontcoord,1, ncoord)
+   
   if rank ==0:
     import matplotlib.pyplot as plt # plt 用于显示图片
+	# 接受数据
+    deimg = np.empty([nx,ny,nz], dtype = np.float64)
+	deimg[0:100,0:100,0:100] = J
+    for i in range(1,size):
+      icoord = rank2coord(i,ncoord)
+      start = dim*[0]
+      end = dim*[0]
+      for j in range(dim):
+        if icoord[j]==0:  
+          start[j] = 0
+          end[j] = 100
+        else:
+          start[j] = 100
+          end[j] = 200
+      recbuf = np.empty([100,100,100],np.float64)
+      comm.Recv(recbuf, source=i, tag=20)
+      deimg[start[0]:end[0],start[1]:end[1],start[2]:end[2]] = recbuf
+    del recbuf  
     plt.title(r'Denoisies Image of TV3D$')
-    plt.imshow(J[:,:,100],"gray")
+    plt.imshow(deimg[:,:,100],"gray")
     plt.axis('off')
     plt.show()
-	
+  else:
+    start = dim*[0]
+    end = dim*[0]
+    for j in range(dim):
+      if coord[j] == 0:
+        start[j] = 0
+        end[j] = 100
+      else:
+        start[j] = 1
+        end[j] = 101
+    sendbuf = J[start[0]:end[0],start[1]:end[1],start[2]:end[2]].copy()
+    comm.Send(sendbuf, dest=0, tag=20)  
+    del sendbuf
 	
 	
 	
