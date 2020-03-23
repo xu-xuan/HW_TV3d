@@ -1,3 +1,4 @@
+# echo 0 | sudo tee /proc/sys/kernel/yama/ptrace_scope
 import numpy as np
 
 def bdx(P,m):
@@ -12,18 +13,44 @@ def bdz(P,l):
 def worker(In, J, dt, lam):
   ep = 1e-4
   m,n,l = J.shape
-  DfJx=J[list(range(1,m))+[m-1],:,:]-J
-  DfJy=J[:,list(range(1,n))+[n-1],:]-J
-  DfJz=J[:,:,list(range(1,l))+[l-1]]-J
-
-  TempDJ=(ep+DfJx*DfJx+DfJy*DfJy+DfJz*DfJz)**(1/2)
-  DivJx=DfJx/TempDJ;
-  DivJy=DfJy/TempDJ;
-  DivJz=DfJz/TempDJ;
-	
-  Div=bdx(DivJx,m)+bdy(DivJy,n)+bdz(DivJz,l)
-          
-  J += dt * Div -dt*lam*(J-In)
+  for i in range(8):
+    start = int(i*m/8-1)
+    end = int((i+1)*m/8+1)
+    #print(start,end)	
+    if start < 0:
+      start = start +1
+      DfJx=J[(start+1):(end+1),:,:]-J[start:end,:,:]	  
+    elif end > m:
+      end = end-1
+      DfJx=J[list(range(start+1,end))+[end-1],:,:]-J[start:end,:,:]
+    else:
+      DfJx=J[(start+1):(end+1),:,:]-J[start:end,:,:]
+    DfJy=J[start:end,list(range(1,n))+[n-1],:]-J[start:end,:,:]
+    DfJz=J[start:end,:,list(range(1,l))+[l-1]]-J[start:end,:,:]
+    TempDJ=(ep+DfJx*DfJx+DfJy*DfJy+DfJz*DfJz)**(1/2)
+    DivJx=DfJx/TempDJ;
+    DivJy=DfJy/TempDJ;
+    DivJz=DfJz/TempDJ;  
+    del TempDJ
+    mi,ni,li = DivJx.shape
+    if start==0:
+      div = DivJx[0:(mi-1),:,:]-DivJx[[0]+list(range(mi-2)),:,:] \
+        + DivJy[0:(mi-1),:,:]-DivJy[0:(mi-1),[0]+list(range(ni-1)),:]\
+        + DivJz[0:(mi-1),:,:]-DivJz[0:(mi-1),:,[0]+list(range(li-1))]
+      J[start:(end-1),:,:] += dt * div -dt*lam*(J[start:(end-1),:,:]-In[start:(end-1),:,:])  
+    elif end == m:
+      mi = mi + 1
+      end = end + 1	  
+     # print(mi)
+      div = DivJx[1:(mi-1),:,:]-DivJx[0:(mi-2),:,:] \
+        + DivJy[1:(mi-1),:,:]-DivJy[1:(mi-1),[0]+list(range(ni-1)),:]\
+        + DivJz[1:(mi-1),:,:]-DivJz[1:(mi-1),:,[0]+list(range(li-1))]
+      J[(start+1):(end-1),:,:] += dt * div -dt*lam*(J[(start+1):(end-1),:,:]-In[(start+1):(end-1),:,:])  
+    else:
+      div = DivJx[1:(mi-1),:,:]-DivJx[0:(mi-2),:,:] \
+        + DivJy[1:(mi-1),:,:]-DivJy[1:(mi-1),[0]+list(range(ni-1)),:]\
+        + DivJz[1:(mi-1),:,:]-DivJz[1:(mi-1),:,[0]+list(range(li-1))]
+      J[(start+1):(end-1),:,:] += dt * div -dt*lam*(J[(start+1):(end-1),:,:]-In[(start+1):(end-1),:,:])  	
   return J
 
 def rank2coord(rank, ncoord):
