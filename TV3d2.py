@@ -144,7 +144,7 @@ if __name__ == '__main__':
     J[:,:,0] = Recv4coord(J[:,:,0], frontcoord,1, ncoord)		
 	
    
-  if rank ==0:
+  if rank == 0:
     import matplotlib.pyplot as plt # plt 用于显示图片
 	# 接受数据
     deimg = np.empty([nx,ny,nz], dtype = np.float64)
@@ -153,24 +153,9 @@ if __name__ == '__main__':
     comm.Recv(recbuf, source=1, tag=20)
     deimg[:,:,100:200] = recbuf
     del recbuf  
-    plt.title(r'Denoisies Image of TV3D$')
     plt.imshow(deimg[:,100,:],"gray")
-    plt.axis('off')
-    plt.show()
+    plt.savefig('./result.png')
   else:
     sendbuf = J[:,:,1:101].copy()
     comm.Send(sendbuf, dest=0, tag=20)  
     del sendbuf
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
-	
