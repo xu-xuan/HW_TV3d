@@ -65,7 +65,7 @@ def Recv4coord(data, sourcecoord, tag, ncoord):
 if __name__ == '__main__':
   from mpi4py import MPI
   import matplotlib.pyplot as plt # plt 用于显示图片
-  T, dt, lam = 3, 0.1, 0.01 
+  T, dt, lam = 100, 0.1, 0.01 
   comm = MPI.COMM_WORLD
   size = comm.Get_size()
   rank = comm.Get_rank()
@@ -125,24 +125,24 @@ if __name__ == '__main__':
     if rank ==0 and not t%5:
       print(t, 'of ', T)
     J = worker(nimgsile, J, dt, lam)
-    print('good work', rank )	
+    #print('good work', rank )	
     if rank == 0:
       sendbuf = J[:,:,n2-2].copy()
       recbuf = np.empty(J[:,:,n2-1].shape, dtype=J[:,:,n2-1].dtype)
-      print('begin send of', rank )	  
+      #print('begin send of', rank )	  
       comm.Send(sendbuf, dest=1, tag=100)
-      print('goodsend of', rank )
+      #print('goodsend of', rank )
       comm.Recv(recbuf, source=1, tag=110)	
-      print('goodrecv of', rank )
+      #print('goodrecv of', rank )
       J[:,:,n2-1] = recbuf
     else:
       sendbuf = J[:,:,1].copy()
       recbuf = np.empty(J[:,:,n2-1].shape, dtype=J[:,:,n2-1].dtype)
-      print('begin send of', rank )		  
+      #print('begin send of', rank )		  
       comm.Recv(recbuf, source=0, tag=100)
-      print('goodsend of', rank )	  
+      #print('goodsend of', rank )	  
       comm.Send(sendbuf, dest=0, tag=110)
-      print('goodsend of', rank )	  
+      #print('goodsend of', rank )	  
       J[:,:,0] = recbuf	  	  
 	
    
