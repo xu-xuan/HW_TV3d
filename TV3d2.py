@@ -117,24 +117,33 @@ if __name__ == '__main__':
     # backcoord[2] = coord[2]+1
   # else:
     # backcoord = None 
-  # #print(frontcoord,backcoord, 'of', coord, rank)
+  #print(frontcoord,backcoord, 'of', coord, rank)
   # Iterative
   J = nimgsile.copy()
   n0,n1,n2 = J.shape  
-  print(n2, 'of', rank )
   for t in range(T):
     if rank ==0 and not t%5:
       print(t, 'of ', T)
     J = worker(nimgsile, J, dt, lam)
-	if rank == 0:
-      sendbuf = J[:,:,n2-1].copy()
+    print('good work', rank )	
+    if rank == 0:
+      sendbuf = J[:,:,n2-2].copy()
+      recbuf = np.empty(J[:,:,n2-1].shape, dtype=J[:,:,n2-1].dtype)
+      print('begin send of', rank )	  
       comm.Send(sendbuf, dest=1, tag=100)
-      recbuf = np.empty(data.shape, dtype=data.dtype)
-      sourcerank = coord2rank(sourcecoord,ncoord)
-      comm.Recv(recbuf, source=sourcerank, tag=tag)      
-
-    Send4coord(J[:,:,n2-2], backcoord, 1, ncoord)
-    J[:,:,0] = Recv4coord(J[:,:,0], frontcoord,1, ncoord)		
+      print('goodsend of', rank )
+      comm.Recv(recbuf, source=1, tag=110)	
+      print('goodrecv of', rank )
+      J[:,:,n2-1] = recbuf
+    else:
+      sendbuf = J[:,:,1].copy()
+      recbuf = np.empty(J[:,:,n2-1].shape, dtype=J[:,:,n2-1].dtype)
+      print('begin send of', rank )		  
+      comm.Recv(recbuf, source=0, tag=100)
+      print('goodsend of', rank )	  
+      comm.Send(sendbuf, dest=0, tag=110)
+      print('goodsend of', rank )	  
+      J[:,:,0] = recbuf	  	  
 	
    
   if rank ==0:
