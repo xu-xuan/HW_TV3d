@@ -64,7 +64,8 @@ def Recv4coord(data, sourcecoord, tag, ncoord):
 	
 if __name__ == '__main__':
   from mpi4py import MPI
-  T, dt, lam = 50, 0.1, 0.01 
+  import matplotlib.pyplot as plt # plt 用于显示图片
+  T, dt, lam = 3, 0.1, 0.01 
   comm = MPI.COMM_WORLD
   size = comm.Get_size()
   rank = comm.Get_rank()
@@ -81,55 +82,72 @@ if __name__ == '__main__':
 	# Adding Gaussian noise
     nmean, nsigma = 0.0, 12.0
     nimg = np.random.normal(nmean,nsigma,(nx,ny,nz)) + img
+    plt.figure()
+    plt.imshow(img[:,100,:],"gray")
+    plt.savefig('./img.png')
+    plt.figure()
+    plt.imshow(nimg[:,100,:],"gray")
+    plt.savefig('./nimg.png')	
     del img
     nimgsile = nimg[:,:,0:101]
-    sendbuf = nimg[:,:,100:200].copy()
+    sendbuf = nimg[:,:,99:200].copy()
+    plt.figure()
+    plt.imshow(sendbuf[:,100,:],"gray")
+    plt.savefig('./sendbuf.png')	
     comm.Send(sendbuf, dest=1, tag=11)
+    plt.figure()
+    plt.imshow(nimgsile[:,100,:],"gray")
+    plt.savefig('./nimgsile0.png')	
     del nimg, sendbuf
   else: 
     nimgsile = np.empty([200,200,101],dtype=np.float64) 
     comm.Recv(nimgsile, source=0, tag=11)
+    plt.figure()
+    plt.imshow(nimgsile[:,100,:],"gray")
+    plt.savefig('./nimgsile1.png')	
 
-  if coord[2]>0:
-    frontcoord = coord.copy()
-    frontcoord[2] = coord[2]-1
-  else: 
-    frontcoord = None
+  # if coord[2]>0:
+    # frontcoord = coord.copy()
+    # frontcoord[2] = coord[2]-1
+  # else: 
+    # frontcoord = None
 	
-  if coord[2]<ncoord[2]-1:
-    backcoord = coord.copy()
-    backcoord[2] = coord[2]+1
-  else:
-    backcoord = None 
-  #print(frontcoord,backcoord, 'of', coord, rank)
+  # if coord[2]<ncoord[2]-1:
+    # backcoord = coord.copy()
+    # backcoord[2] = coord[2]+1
+  # else:
+    # backcoord = None 
+  # #print(frontcoord,backcoord, 'of', coord, rank)
   # Iterative
   J = nimgsile.copy()
   n0,n1,n2 = J.shape  
+  print(n2, 'of', rank )
   for t in range(T):
     if rank ==0 and not t%5:
       print(t, 'of ', T)
     J = worker(nimgsile, J, dt, lam)
-	# Send
-    Send4coord(J[:,:,1], frontcoord, 1, ncoord)
-    J[:,:,n2-1] =  Recv4coord(J[:,:,n2-1],backcoord,1, ncoord)
+	if rank == 0:
+      sendbuf = J[:,:,n2-1].copy()
+      comm.Send(sendbuf, dest=1, tag=100)
+      recbuf = np.empty(data.shape, dtype=data.dtype)
+      sourcerank = coord2rank(sourcecoord,ncoord)
+      comm.Recv(recbuf, source=sourcerank, tag=tag)      
 
     Send4coord(J[:,:,n2-2], backcoord, 1, ncoord)
     J[:,:,0] = Recv4coord(J[:,:,0], frontcoord,1, ncoord)		
 	
    
   if rank ==0:
-    import matplotlib.pyplot as plt # plt 用于显示图片
 	# 接受数据
     deimg = np.empty([nx,ny,nz], dtype = np.float64)
     deimg[:,:,0:100] = J[:,:,0:100]
     recbuf = np.empty([200,200,100],np.float64)
     comm.Recv(recbuf, source=1, tag=20)
     deimg[:,:,100:200] = recbuf
-    del recbuf  
-    plt.title(r'Denoisies Image of TV3D$')
+    del recbuf  	
+    plt.figure()
     plt.imshow(deimg[:,100,:],"gray")
-    plt.axis('off')
-    plt.show()
+    plt.savefig('./result.png')	
   else:
     sendbuf = J[:,:,1:101].copy()
     comm.Send(sendbuf, dest=0, tag=20)  
